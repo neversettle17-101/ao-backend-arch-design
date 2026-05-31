@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AO Backend Rewrite — Phase 1 Design</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f9fafb;
+      --surface: #ffffff;
+      --border: #e5e7eb;
+      --text: #111827;
+      --text-secondary: #6b7280;
+      --accent: #2563eb;
+      --accent-light: #eff6ff;
+      --green: #059669;
+      --green-light: #ecfdf5;
+      --amber: #d97706;
+      --amber-light: #fffbeb;
+      --red: #dc2626;
+      --red-light: #fef2f2;
+      --slate: #475569;
+      --code-bg: #f1f5f9;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+      --nav-width: 210px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 15px;
+    }
+
+    /* ── Page wrapper ───────────────────────────────── */
+    .page { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+
+    /* ── Hero (full width) ──────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+      color: #fff;
+      border-radius: 12px;
+      padding: 36px 44px;
+      margin-bottom: 36px;
+    }
+    .hero-label { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; opacity: .7; margin-bottom: 10px; }
+    .hero h1 { font-size: 26px; font-weight: 700; margin-bottom: 10px; }
+    .hero p  { font-size: 14px; opacity: .85; max-width: 680px; line-height: 1.7; }
+    .hero-meta { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+    .hero-meta span { background: rgba(255,255,255,.15); border-radius: 6px; padding: 4px 12px; font-size: 12.5px; font-weight: 500; }
+
+    /* ── Two-column layout ──────────────────────────── */
+    .layout { display: grid; grid-template-columns: var(--nav-width) 1fr; gap: 36px; align-items: start; }
+    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } .nav-sidebar { display: none; } }
+
+    /* ── Left nav ───────────────────────────────────── */
+    .nav-sidebar { position: sticky; top: 24px; }
+    .nav-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-secondary); padding: 0 10px; margin-bottom: 6px; }
+    .nav-group { margin-bottom: 18px; }
+    .nav-link {
+      display: block;
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      padding: 5px 10px;
+      border-radius: 6px;
+      border-left: 2px solid transparent;
+      transition: all .15s;
+      line-height: 1.4;
+    }
+    .nav-link:hover { color: var(--text); background: var(--surface); }
+    .nav-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-light); font-weight: 500; }
+    .nav-phase-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 7px;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+
+    /* ── Content area ───────────────────────────────── */
+    .content section { margin-bottom: 44px; scroll-margin-top: 24px; }
+
+    /* ── Section title ──────────────────────────────── */
+    .section-title {
+      font-size: 12.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--text-secondary); margin-bottom: 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ── Architecture box ───────────────────────────── */
+    .arch-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 28px; box-shadow: var(--shadow); }
+    .arch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 16px; }
+    @media (max-width: 640px) { .arch-grid { grid-template-columns: 1fr; } }
+    .arch-flow-item { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 9px 14px; font-size: 13px; font-weight: 500; text-align: center; }
+    .arch-flow-connector { text-align: center; color: var(--text-secondary); font-size: 16px; line-height: 1.2; margin: 2px 0; }
+    .arch-desc { font-size: 13.5px; color: var(--slate); line-height: 1.7; margin-bottom: 14px; }
+    .mw-label { font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; margin-top: 10px; }
+
+    /* ── Decision cards ─────────────────────────────── */
+    .decisions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 640px) { .decisions-grid { grid-template-columns: 1fr; } }
+    .decision-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
+    .decision-card.full-width { grid-column: 1 / -1; }
+    .decision-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+    .decision-card h3 { font-size: 13.5px; font-weight: 600; }
+    .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
+    .badge-settled { background: var(--green-light); color: var(--green); }
+    .badge-open    { background: var(--amber-light); color: var(--amber); }
+    .badge-todo    { background: var(--red-light);   color: var(--red);   }
+    .decision-value { font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
+    .decision-rationale { font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; }
+
+    /* ── Middleware chain ───────────────────────────── */
+    .middleware-chain { display: flex; align-items: center; flex-wrap: wrap; gap: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 12px; box-shadow: var(--shadow); }
+    .mw-node { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 11px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+    .mw-arrow { color: var(--text-secondary); padding: 0 5px; font-size: 13px; }
+    .mw-node.timeout { border-color: var(--amber); color: var(--amber); background: var(--amber-light); }
+    .mw-routes { display: flex; flex-direction: column; gap: 5px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; box-shadow: var(--shadow); }
+    .mw-route-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+    .mw-route-path { font-family: "SF Mono","Fira Code",monospace; font-size: 12px; color: var(--slate); width: 96px; flex-shrink: 0; }
+    .mw-route-stack { display: flex; flex-wrap: wrap; gap: 4px; }
+    .mw-chip { font-size: 11px; padding: 2px 7px; border-radius: 4px; background: var(--code-bg); border: 1px solid var(--border); color: var(--slate); }
+    .mw-chip.highlight { background: var(--accent-light); border-color: #bfdbfe; color: var(--accent); }
+
+    /* ── Shutdown sequence ──────────────────────────── */
+    .sequence { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 22px; box-shadow: var(--shadow); }
+    .seq-step { display: flex; gap: 12px; align-items: flex-start; padding: 7px 0; }
+    .seq-step:not(:last-child) { border-bottom: 1px dashed var(--border); }
+    .seq-num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .seq-content { font-size: 13px; line-height: 1.6; }
+    .seq-content strong { color: var(--text); font-weight: 600; }
+    .seq-content span { color: var(--text-secondary); }
+
+    /* ── SSE ────────────────────────────────────────── */
+    .sse-code { background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; font-family: "SF Mono","Fira Code",monospace; font-size: 12.5px; line-height: 2; color: var(--slate); }
+
+    /* ── Routes table ───────────────────────────────── */
+    .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    thead tr { background: var(--bg); }
+    thead th { text-align: left; padding: 9px 13px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+    tbody tr { border-bottom: 1px solid var(--border); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--bg); }
+    td { padding: 8px 13px; vertical-align: middle; }
+    .method { font-family: "SF Mono","Fira Code",monospace; font-size: 10.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-block; }
+    .method-get    { background: #eff6ff; color: #1d4ed8; }
+    .method-post   { background: #f0fdf4; color: #15803d; }
+    .method-delete { background: #fef2f2; color: #b91c1c; }
+    .route-path  { font-family: "SF Mono","Fira Code",monospace; font-size: 12px; color: var(--slate); }
+    .route-notes { color: var(--text-secondary); font-size: 12.5px; }
+    .badge-noop  { background: #f3f4f6; color: #9ca3af; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+    .badge-todo2 { background: var(--amber-light); color: var(--amber); font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+    .badge-new   { background: var(--green-light); color: var(--green); font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+    .badge-p2    { background: #f5f3ff; color: #7c3aed; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+
+    /* ── Implementation phases ──────────────────────── */
+    .impl-phase { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); margin-bottom: 12px; }
+    .impl-phase-header { display: flex; align-items: center; gap: 14px; padding: 13px 18px; border-bottom: 1px solid var(--border); background: var(--bg); }
+    .impl-phase-num { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; color: #fff; }
+    .phase-color-1 { background: #2563eb; }
+    .phase-color-2 { background: #0891b2; }
+    .phase-color-3 { background: #7c3aed; }
+    .phase-color-4 { background: #059669; }
+    .phase-color-5 { background: #9ca3af; }
+    .impl-phase-title { font-size: 13.5px; font-weight: 600; flex: 1; }
+    .impl-phase-goal  { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
+    .impl-phase-body  { padding: 14px 18px; }
+    .impl-tasks { list-style: none; display: flex; flex-direction: column; }
+    .impl-tasks li { font-size: 12.5px; color: var(--slate); display: flex; gap: 10px; align-items: flex-start; padding: 5px 0; border-bottom: 1px dashed var(--border); }
+    .impl-tasks li:last-child { border-bottom: none; }
+    .impl-tasks li::before { content: '·'; color: #d1d5db; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+    .impl-exit { margin-top: 12px; background: var(--green-light); border: 1px solid #bbf7d0; border-radius: 6px; padding: 9px 13px; font-size: 12px; color: #065f46; display: flex; gap: 8px; align-items: flex-start; }
+    .impl-exit::before { content: '✓'; font-weight: 700; flex-shrink: 0; }
+    .impl-blocked { margin-top: 10px; background: var(--amber-light); border: 1px solid #fde68a; border-radius: 6px; padding: 9px 13px; font-size: 12px; color: #92400e; display: flex; gap: 8px; align-items: flex-start; }
+    .impl-blocked::before { content: '⚠'; flex-shrink: 0; }
+
+    /* ── Open / TODO cards ──────────────────────────── */
+    .open-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 640px) { .open-grid { grid-template-columns: 1fr; } }
+    .open-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 16px; box-shadow: var(--shadow); display: flex; gap: 11px; align-items: flex-start; }
+    .open-card-icon { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+    .icon-open { background: var(--amber-light); }
+    .icon-todo { background: var(--red-light); }
+    .open-card-body h4 { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .open-card-body p  { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+    /* ── Non-goals ──────────────────────────────────── */
+    .nongoals { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; box-shadow: var(--shadow); }
+    .nongoals ul { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 5px 20px; }
+    @media (max-width: 640px) { .nongoals ul { grid-template-columns: 1fr; } }
+    .nongoals li { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
+    .nongoals li::before { content: '✕'; color: #d1d5db; font-size: 11px; font-weight: 700; }
+
+    /* ── Decision log ───────────────────────────────── */
+    .log-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+    .log-row { display: grid; grid-template-columns: 24px 1fr 1fr; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; align-items: start; }
+    .log-row:last-child { border-bottom: none; }
+    .log-row:hover { background: var(--bg); }
+    .log-num { color: var(--text-secondary); font-weight: 600; font-size: 11.5px; padding-top: 1px; }
+    .log-decision { font-weight: 500; }
+    .log-rationale { color: var(--text-secondary); font-size: 12px; }
+    .log-header { display: grid; grid-template-columns: 24px 1fr 1fr; gap: 12px; padding: 8px 14px; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary); }
+
+    /* ── Phase 2 banner ─────────────────────────────── */
+    .phase2-banner { background: linear-gradient(135deg, #2e1065 0%, #4c1d95 100%); border-radius: var(--radius); padding: 18px 24px; color: #fff; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .phase2-banner h3 { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+    .phase2-banner p  { font-size: 12.5px; opacity: .8; }
+    .phase2-topics { display: flex; flex-wrap: wrap; gap: 6px; }
+    .phase2-topic { background: rgba(255,255,255,.15); border-radius: 6px; padding: 3px 9px; font-size: 11.5px; font-weight: 500; }
+
+    /* ── Excl table ─────────────────────────────────── */
+    .impl-excluded { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+    .impl-excl-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; align-items: center; }
+    .impl-excl-row:last-child { border-bottom: none; }
+    .impl-excl-row:first-child { background: var(--bg); font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-secondary); }
+
+    /* ── Code ───────────────────────────────────────── */
+    code { font-family: "SF Mono","Fira Code",monospace; font-size: 12px; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border); }
+
+    /* ── Overview arch ──────────────────────────────── */
+    .overview-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 36px;
+    }
+    .overview-lede {
+      font-size: 14px; color: var(--slate); line-height: 1.7;
+      max-width: 780px; margin-bottom: 22px;
+    }
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr 140px 1fr;
+      gap: 0;
+      align-items: center;
+    }
+    @media (max-width: 700px) { .overview-grid { grid-template-columns: 1fr; gap: 16px; } }
+    .ov-box {
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .ov-box-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ov-box-title .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .ov-inner { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+    .ov-layer {
+      border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px;
+      font-size: 12.5px;
+    }
+    .ov-layer-title { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+    .ov-layer-sub { font-size: 11.5px; color: var(--text-secondary); }
+    .ov-surface {
+      display: flex; align-items: center; gap: 10px;
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 7px 11px; font-size: 12px;
+    }
+    .ov-surface-path { font-family: "SF Mono","Fira Code",monospace; font-size: 11.5px; font-weight: 600; width: 80px; flex-shrink: 0; }
+    .ov-surface-desc { font-size: 11.5px; color: var(--text-secondary); }
+    .ov-surface-badge { margin-left: auto; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+    .ov-conn {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 10px; padding: 0 8px;
+    }
+    .ov-conn-arrow {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      font-size: 11px; color: var(--text-secondary); text-align: center; width: 100%;
+    }
+    .ov-conn-line { width: 100%; height: 1px; background: var(--border); }
+    .ov-conn-label { font-size: 10px; color: var(--text-secondary); white-space: nowrap; }
+    .spawn-steps {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; width: 100%;
+    }
+    .spawn-step {
+      display: flex; align-items: flex-start; gap: 8px;
+      font-size: 11px; color: var(--slate); padding: 3px 0;
+      border-bottom: 1px dashed var(--border);
+    }
+    .spawn-step:last-child { border-bottom: none; }
+    .spawn-step-num {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      font-size: 9px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+
+    /* ── Details / dropdown ──────────────────────────── */
+    details { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+    summary {
+      padding: 14px 18px; font-size: 13.5px; font-weight: 600;
+      cursor: pointer; list-style: none;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: '›'; font-size: 18px; color: var(--text-secondary); transition: transform .2s; transform: rotate(90deg); }
+    details[open] summary::after { transform: rotate(270deg); }
+    details[open] summary { border-bottom: 1px solid var(--border); }
+    .details-body { padding: 16px 18px; }
+
+    /* ── Footer ─────────────────────────────────────── */
+    .footer { text-align: center; font-size: 12px; color: var(--text-secondary); margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Hero ─────────────────────────────────────────── -->
+  <div class="hero">
+    <div class="hero-label">Architecture Proposal</div>
+    <h1>AO Backend Rewrite — Design &amp; Implementation Plan</h1>
+    <p>
+      Replacing the current Next.js API routes + dual WebSocket servers with a single Go daemon
+      serving REST, SSE event stream, terminal WebSocket, and the frontend bundle on one port.
+      Covers design decisions, route surface, and the phased implementation plan.
+    </p>
+    <div class="hero-meta">
+      <span>Status: Design + implementation plan ready</span>
+      <span>Frontend: TypeScript / Electron — unchanged</span>
+      <span>Backend: Go daemon on :3001</span>
+    </div>
+  </div>
+
+  <!-- ── Overview (full width) ────────────────────────────── -->
+  <div class="overview-wrap">
+    <div style="background:#fef9c3;border:1px solid #fde047;border-radius:6px;padding:10px 16px;font-size:13px;color:#854d0e;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start">
+      <span style="font-size:15px;flex-shrink:0">⚠️</span>
+      <span><strong>Disclaimer:</strong> This document is primarily focused on <strong>defining interfaces and service boundaries</strong>. Implementation details, data models, and internal wiring are intentionally deferred — the goal right now is to agree on the shape of the system before writing any code.</span>
+    </div>
+    <p class="overview-lede">
+      This document covers the design decisions and implementation plan for rewriting the AO backend in Go.
+      The Go daemon runs as a <strong>subprocess spawned by the Electron main process</strong>, serving the REST API,
+      SSE event push, terminal WebSocket, and the frontend static bundle — all on a single port.
+      The frontend (TypeScript / Electron) is unchanged; only the backend changes.
+    </p>
+
+    <div class="overview-grid">
+
+      <!-- Electron side -->
+      <div class="ov-box">
+        <div class="ov-box-title" style="background:#f0f9ff">
+          <div class="dot" style="background:#2563eb"></div>
+          Electron Desktop App
+        </div>
+        <div class="ov-inner">
+          <div class="ov-layer" style="background:#eff6ff;border-color:#bfdbfe">
+            <div class="ov-layer-title" style="color:#1d4ed8">Renderer (Chromium · sandboxed)</div>
+            <div class="ov-layer-sub">React / TypeScript UI — fetch, EventSource, WebSocket → localhost:3001</div>
+          </div>
+          <div class="ov-layer">
+            <div class="ov-layer-title">Main Process (Node.js · privileged)</div>
+            <div class="ov-layer-sub">Spawns + supervises Go daemon · waits for <code>/healthz</code> before renderer connects</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Connector -->
+      <div class="ov-conn">
+        <div class="spawn-steps">
+          <div style="font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Startup</div>
+          <div class="spawn-step"><div class="spawn-step-num">1</div><div>Main spawns <code>./ao-daemon</code></div></div>
+          <div class="spawn-step"><div class="spawn-step-num">2</div><div>Daemon binds <code>:3001</code>, starts listening</div></div>
+          <div class="spawn-step"><div class="spawn-step-num">3</div><div>Main polls <code>/healthz</code> until ready</div></div>
+          <div class="spawn-step"><div class="spawn-step-num">4</div><div>Renderer connects and loads UI</div></div>
+        </div>
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;width:100%;margin-top:6px">
+          <div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">TODO — open question</div>
+          <div style="font-size:11px;color:#78350f;line-height:1.5">How are agent sessions &amp; projects loaded on daemon startup? Warm cache from disk, lazy-load on first request, or explicit restore step?</div>
+        </div>
+        <div class="ov-conn-arrow">
+          <div style="font-size:10px;color:var(--text-secondary)">HTTP · SSE · WS</div>
+          <div style="display:flex;align-items:center;gap:2px;width:100%;justify-content:center">
+            <div style="flex:1;height:1px;background:var(--border)"></div>
+            <div style="font-size:14px;color:var(--text-secondary)">⇄</div>
+            <div style="flex:1;height:1px;background:var(--border)"></div>
+          </div>
+          <div style="font-size:10px;color:var(--text-secondary)">localhost:3001</div>
+        </div>
+      </div>
+
+      <!-- Go daemon side -->
+      <div class="ov-box">
+        <div class="ov-box-title" style="background:#f0fdf4">
+          <div class="dot" style="background:#059669"></div>
+          Go Daemon — localhost:3001
+        </div>
+        <div class="ov-inner">
+          <div class="ov-surface" style="background:#f8fafc">
+            <div class="ov-surface-path" style="color:#64748b">GET /</div>
+            <div class="ov-surface-desc">Frontend static bundle (<code>embed.FS</code>)</div>
+          </div>
+          <div class="ov-surface" style="background:#eff6ff">
+            <div class="ov-surface-path" style="color:#2563eb">/api/v1/*</div>
+            <div class="ov-surface-desc">REST API — 25 routes</div>
+            <span class="ov-surface-badge" style="background:#dbeafe;color:#1d4ed8">chi router</span>
+          </div>
+          <div class="ov-surface" style="background:#fffbeb">
+            <div class="ov-surface-path" style="color:#d97706">GET /events</div>
+            <div class="ov-surface-desc">SSE state push</div>
+            <span class="ov-surface-badge" style="background:#fef3c7;color:#d97706">in progress</span>
+          </div>
+          <div class="ov-surface" style="background:#f5f3ff">
+            <div class="ov-surface-path" style="color:#7c3aed">GET /mux</div>
+            <div class="ov-surface-desc">WebSocket terminal stream</div>
+            <span class="ov-surface-badge" style="background:#ede9fe;color:#7c3aed">phase 4</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /overview-grid -->
+  </div>
+
+  <!-- ── Two-column layout ─────────────────────────────── -->
+  <div class="layout">
+
+    <!-- ── Left nav ──────────────────────────────────── -->
+    <aside class="nav-sidebar">
+      <div class="nav-group">
+        <div class="nav-label">Overview</div>
+        <a class="nav-link" href="#what-changes">Architecture</a>
+        <a class="nav-link" href="#key-decisions">Key decisions</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Design</div>
+        <a class="nav-link" href="#middleware">Middleware stack</a>
+        <a class="nav-link" href="#shutdown">Graceful shutdown</a>
+        <a class="nav-link" href="#sse">SSE event push</a>
+        <a class="nav-link" href="#routes">Route inventory</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Implementation</div>
+        <a class="nav-link" href="#phase1a"><span class="nav-phase-dot" style="background:#2563eb"></span>1a — Skeleton</a>
+        <a class="nav-link" href="#phase1b"><span class="nav-phase-dot" style="background:#2563eb"></span>1b — Route shell</a>
+        <a class="nav-link" href="#phase1c"><span class="nav-phase-dot" style="background:#2563eb"></span>1c — Electron integration</a>
+        <a class="nav-link" href="#phase2"><span class="nav-phase-dot" style="background:#7c3aed"></span>Phase 2 — EventBus + SSE + Frontend</a>
+        <a class="nav-link" href="#phase3"><span class="nav-phase-dot" style="background:#059669"></span>Phase 3 — Core routes</a>
+        <a class="nav-link" href="#phase4"><span class="nav-phase-dot" style="background:#9ca3af"></span>Phase 4 — WebSocket /mux</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Reference</div>
+        <a class="nav-link" href="#open">Open items</a>
+        <a class="nav-link" href="#nongoals">Non-goals</a>
+        <a class="nav-link" href="#decisionlog">Decision log</a>
+        <a class="nav-link" href="ao-routes-analysis.html">REST API analysis ↗</a>
+      </div>
+    </aside>
+
+    <!-- ── Content ───────────────────────────────────── -->
+    <div class="content">
+
+      <!-- What changes -->
+      <section id="what-changes">
+        <div class="section-title">What changes</div>
+        <div class="arch-box">
+          <p class="arch-desc">
+            Today AO runs a Next.js server (API routes + 2 WebSocket servers) alongside the lifecycle manager.
+            The rewrite collapses this into a <strong>single Go binary</strong> with clear internal service boundaries.
+            The frontend stays TypeScript/Electron — only the backend changes.
+          </p>
+          <div class="arch-grid">
+            <div>
+              <div class="mw-label" style="margin-top:0">Before (TypeScript)</div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div class="arch-flow-item" style="background:#fff5f5;border-color:#fecaca">Next.js API routes</div>
+                <div class="arch-flow-connector">+</div>
+                <div class="arch-flow-item" style="background:#fff5f5;border-color:#fecaca">WS server 1 (terminal)</div>
+                <div class="arch-flow-connector">+</div>
+                <div class="arch-flow-item" style="background:#fff5f5;border-color:#fecaca">WS server 2 (events)</div>
+                <div class="arch-flow-connector">+</div>
+                <div class="arch-flow-item" style="background:#fff5f5;border-color:#fecaca">Lifecycle manager (TS)</div>
+              </div>
+            </div>
+            <div>
+              <div class="mw-label" style="margin-top:0">After (Go)</div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div class="arch-flow-item" style="background:#f0fdf4;border-color:#bbf7d0;font-weight:700">Single Go binary on :3001</div>
+                <div class="arch-flow-connector">↓</div>
+                <div class="arch-flow-item">REST API &nbsp;·&nbsp; <code>/api/v1/*</code></div>
+                <div class="arch-flow-connector">+</div>
+                <div class="arch-flow-item">SSE events &nbsp;·&nbsp; <code>/events</code></div>
+                <div class="arch-flow-connector">+</div>
+                <div class="arch-flow-item">Terminal WS &nbsp;·&nbsp; <code>/mux</code> (Phase 4)</div>
+                <div class="arch-flow-connector">+</div>
+                <div class="arch-flow-item">Frontend bundle &nbsp;·&nbsp; <code>/</code></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Key decisions -->
+      <section id="key-decisions">
+        <div class="section-title">Key decisions</div>
+        <div class="decisions-grid">
+          <div class="decision-card">
+            <div class="decision-card-header"><h3>HTTP Framework</h3><span class="badge badge-settled">Settled</span></div>
+            <div class="decision-value">chi</div>
+            <div class="decision-rationale"><code>http.Handler</code>-compatible — WS upgrade is a zero-change drop-in. Subrouters let us apply different middleware stacks per surface. gin/fiber have custom contexts that fight with WS libraries.</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-card-header"><h3>Single Port</h3><span class="badge badge-settled">Settled</span></div>
+            <div class="decision-value">localhost:3001 — REST + SSE + WS + static</div>
+            <div class="decision-rationale">Local daemon, single user. Same-origin means no CORS. One lifecycle to drain on shutdown. Dev and prod are the same port. Six structural disciplines keep a future split cheap.</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-card-header"><h3>Event Push Transport</h3><span class="badge badge-open">In Progress</span></div>
+            <div class="decision-value">SSE for state updates, WS only for terminal</div>
+            <div class="decision-rationale">Transport direction agreed — SSE is one-way, HTTP-native, has built-in <code>EventSource</code> reconnect. Full design (subscription model, frontend integration, envelope) still being finalised.</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-card-header"><h3>Port Conflict</h3><span class="badge badge-settled">Settled</span></div>
+            <div class="decision-value">Fail fast — clear error message</div>
+            <div class="decision-rationale">If port 3001 is taken, exit immediately. User configures a different port. Actual bound port written to <code>running.json</code> — that's how CLI and Electron discover it.</div>
+          </div>
+          <div class="decision-card full-width">
+            <div class="decision-card-header"><h3>Route Surface</h3><span class="badge badge-settled">Settled</span></div>
+            <div class="decision-value">25 routes — exact path parity with current TS, under <code>/api/v1</code></div>
+            <div class="decision-rationale">Rewrite, not reimagine. All 25 current routes preserved with identical paths and query-param contracts. Routes whose internals are unknown ship as no-ops. No pagination added. Consolidation comes in v2.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Middleware -->
+      <section id="middleware">
+        <div class="section-title">Middleware stack</div>
+        <div class="mw-label" style="margin-top:0">Stack (outermost → innermost)</div>
+        <div class="middleware-chain">
+          <div class="mw-node">Recoverer</div><div class="mw-arrow">→</div>
+          <div class="mw-node">Request ID</div><div class="mw-arrow">→</div>
+          <div class="mw-node">Logger</div><div class="mw-arrow">→</div>
+          <div class="mw-node">Real IP</div><div class="mw-arrow">→</div>
+          <div class="mw-node timeout">Timeout *</div><div class="mw-arrow">→</div>
+          <div class="mw-node">Handler</div>
+        </div>
+        <div class="mw-label">* Timeout applied only where safe — per subrouter</div>
+        <div class="mw-routes">
+          <div class="mw-route-row">
+            <div class="mw-route-path">/api/v1/*</div>
+            <div class="mw-route-stack">
+              <span class="mw-chip highlight">Recoverer</span><span class="mw-chip highlight">Request ID</span>
+              <span class="mw-chip highlight">Logger</span><span class="mw-chip highlight">Real IP</span><span class="mw-chip highlight">Timeout</span>
+            </div>
+          </div>
+          <div class="mw-route-row">
+            <div class="mw-route-path">/events</div>
+            <div class="mw-route-stack">
+              <span class="mw-chip highlight">Recoverer</span><span class="mw-chip highlight">Request ID</span>
+              <span class="mw-chip highlight">Logger</span><span class="mw-chip">no timeout — long-lived</span>
+            </div>
+          </div>
+          <div class="mw-route-row">
+            <div class="mw-route-path">/mux</div>
+            <div class="mw-route-stack"><span class="mw-chip highlight">Recoverer</span><span class="mw-chip">Phase 4</span></div>
+          </div>
+          <div class="mw-route-row">
+            <div class="mw-route-path">/ (static)</div>
+            <div class="mw-route-stack"><span class="mw-chip highlight">Recoverer</span></div>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:var(--text-secondary)">No CORS (same-origin, same port in dev and prod). No auth. No rate limiting (local daemon, single user).</div>
+      </section>
+
+      <!-- Shutdown -->
+      <section id="shutdown">
+        <div class="section-title">Graceful shutdown</div>
+        <div class="sequence">
+          <div class="seq-step"><div class="seq-num">1</div><div class="seq-content"><strong>Stop accepting.</strong> <span>Signal handler fires on SIGTERM or SIGINT via <code>signal.NotifyContext</code>.</span></div></div>
+          <div class="seq-step"><div class="seq-num">2</div><div class="seq-content"><strong>Close SSE connections.</strong> <span>Drop open streams. Frontend's <code>EventSource</code> auto-reconnects and fails gracefully.</span></div></div>
+          <div class="seq-step"><div class="seq-num">3</div><div class="seq-content"><strong>Drain HTTP.</strong> <span><code>http.Server.Shutdown(ctx)</code> — waits for in-flight REST requests to complete.</span></div></div>
+          <div class="seq-step"><div class="seq-num">4</div><div class="seq-content"><strong>Lifecycle cleanup.</strong> <span>Terminate running agent sessions. Write last-stop state.</span></div></div>
+          <div class="seq-step"><div class="seq-num">5</div><div class="seq-content"><strong>Unregister.</strong> <span>Remove entry from <code>running.json</code>.</span></div></div>
+          <div class="seq-step"><div class="seq-num">6</div><div class="seq-content"><strong>Exit 0.</strong> <span>Hard timeout: 10s total (matches current TS). If not clean, <code>os.Exit(1)</code>.</span></div></div>
+        </div>
+      </section>
+
+      <!-- SSE -->
+      <section id="sse">
+        <div class="section-title">SSE event push <span style="font-size:11px;font-weight:600;background:var(--amber-light);color:var(--amber);padding:2px 8px;border-radius:20px;margin-left:8px;letter-spacing:0;text-transform:none">In Progress</span></div>
+        <div style="background:var(--amber-light);border:1px solid #fde68a;border-radius:var(--radius);padding:12px 16px;font-size:13px;color:#92400e;margin-bottom:14px;">
+          Transport choice (SSE over WebSocket) is decided. Subscription model, frontend integration, and full wire contract are still being designed.
+        </div>
+        <div class="decisions-grid">
+          <div class="decision-card">
+            <div class="decision-card-header"><h3>Subscription endpoint</h3><span class="badge badge-open">Open</span></div>
+            <div class="decision-value">GET /api/v1/events?topics=…</div>
+            <div class="decision-rationale">Leaning toward URL topic filter — one global connection per tab, server filters once. Per-resource scoped streams for detail pages under consideration.</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-card-header"><h3>Wire envelope</h3><span class="badge badge-open">Open</span></div>
+            <div class="decision-value">Standard SSE: event / id / data</div>
+            <div class="decision-rationale"><code>event:</code> topic name dispatches to store slice. <code>id:</code> monotonic counter drives <code>Last-Event-ID</code> replay. <code>data:</code> JSON payload. Event taxonomy not yet finalised.</div>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <div class="mw-label" style="margin-top:0;margin-bottom:6px">Proposed wire format (subject to change)</div>
+          <div class="sse-code">
+            <span style="color:#059669">event:</span> session.updated &nbsp;&nbsp; <span style="color:#9ca3af"># topic name</span><br>
+            <span style="color:#059669">id:</span> 42 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color:#9ca3af"># monotonic counter</span><br>
+            <span style="color:#059669">data:</span> {"sessionId":"abc","status":"working","updatedAt":"…"}<br><br>
+            <span style="color:#059669">event:</span> pr.updated<br>
+            <span style="color:#059669">id:</span> 43<br>
+            <span style="color:#059669">data:</span> {"sessionId":"abc","prNumber":123,"ciStatus":"passed"}
+          </div>
+        </div>
+      </section>
+
+      <!-- Routes -->
+      <section id="routes">
+        <div class="section-title">Route inventory</div>
+        <div class="arch-box">
+          <p class="arch-desc" style="margin-bottom:16px">
+            The full per-endpoint breakdown of all 25 legacy routes — each mapped to the Go inbound contract with a
+            <strong>verdict</strong> (build now / drop / defer / reshape / different lane) and the contract gaps behind it —
+            lives in its own companion document.
+          </p>
+          <a href="https://htmlpreview.github.io/?https://gist.githubusercontent.com/neversettle17-101/00c659adf978b80b1e2eb600d451932a/raw/ao-routes-analysis.html"
+             style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;text-decoration:none;padding:9px 16px;border-radius:6px">
+            Open the REST API Analysis →
+          </a>
+        </div>
+      </section>
+
+      <!-- Implementation plan -->
+      <section id="impl-plan">
+        <div class="section-title">Implementation plan</div>
+
+        <!-- Phase 1 label -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;margin-top:4px">
+          <div style="width:28px;height:28px;border-radius:50%;background:#2563eb;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">1</div>
+          <div>
+            <div style="font-size:14px;font-weight:700">Phase 1 — Backend server running</div>
+            <div style="font-size:12px;color:var(--text-secondary)">4 sub-phases · can start immediately</div>
+          </div>
+        </div>
+        <div style="border-left:2px solid #bfdbfe;padding-left:16px;margin-left:13px;display:flex;flex-direction:column;gap:10px;margin-bottom:24px">
+
+          <!-- 1a Skeleton -->
+          <div class="impl-phase" id="phase1a">
+            <div class="impl-phase-header">
+              <div class="impl-phase-num phase-color-1" style="font-size:11px">1a</div>
+              <div>
+                <div class="impl-phase-title">Skeleton</div>
+                <div class="impl-phase-goal">Daemon starts, binds port, shuts down cleanly. No routes yet.</div>
+              </div>
+            </div>
+            <div class="impl-phase-body">
+              <ul class="impl-tasks">
+                <li><code>go mod init</code> — project structure: <code>cmd/daemon/main.go</code>, <code>internal/server/</code>, <code>internal/config/</code></li>
+                <li>Config loading — port (default 3001), bind address</li>
+                <li><code>127.0.0.1</code> bind + fail-fast on port conflict with clear error</li>
+                <li>Write PID + port to <code>running.json</code> on start; stale PID check on startup</li>
+                <li>chi router + 5-middleware stack wired per subrouter</li>
+                <li><code>signal.NotifyContext</code> — SIGTERM + SIGINT → 10s graceful shutdown sequence</li>
+                <li><code>GET /healthz</code> and <code>GET /readyz</code></li>
+              </ul>
+              <div class="impl-exit"><code>go run ./cmd/daemon</code> starts, logs "listening on 127.0.0.1:3001", <code>/healthz</code> returns 200, Ctrl+C shuts down cleanly and removes <code>running.json</code>.</div>
+            </div>
+          </div>
+
+          <!-- 1b Route shell -->
+          <div class="impl-phase" id="phase1b">
+            <div class="impl-phase-header">
+              <div class="impl-phase-num phase-color-1" style="font-size:11px">1b</div>
+              <div>
+                <div class="impl-phase-title">Route shell</div>
+                <div class="impl-phase-goal">All 25 routes registered. No 404s anywhere. No logic yet.</div>
+              </div>
+            </div>
+            <div class="impl-phase-body">
+              <ul class="impl-tasks">
+                <li><code>/api/v1</code> chi subrouter mounted with correct middleware stack</li>
+                <li>All 25 routes registered with correct HTTP methods — handlers return <code>501 Not Implemented</code></li>
+                <li>No-op routes explicitly marked in code with a comment</li>
+                <li><code>GET /api/v1/events</code> and <code>GET /mux</code> registered as placeholders (501)</li>
+              </ul>
+              <div class="impl-exit"><code>curl localhost:3001/api/v1/sessions</code> returns 501, not 404. Every current TS route has a corresponding Go route.</div>
+            </div>
+          </div>
+
+          <!-- 1c Electron integration -->
+          <div class="impl-phase" id="phase1c">
+            <div class="impl-phase-header">
+              <div class="impl-phase-num phase-color-1" style="font-size:11px">1c</div>
+              <div>
+                <div class="impl-phase-title">Electron integration</div>
+                <div class="impl-phase-goal">Electron spawns and supervises the Go daemon. Frontend loads from the binary.</div>
+              </div>
+            </div>
+            <div class="impl-phase-body">
+              <ul class="impl-tasks">
+                <li><strong>Spawn</strong> — Electron main process spawns <code>./ao-daemon</code> as a child process on app launch</li>
+                <li><strong>Discovery</strong> — main reads <code>running.json</code> to get the port; polls <code>/healthz</code> before allowing renderer to connect</li>
+                <li><strong>Teardown</strong> — on app quit, main sends SIGTERM to daemon and waits up to 10s</li>
+                <li><strong>Static serving</strong> — serve compiled frontend bundle via <code>embed.FS</code> with correct <code>Cache-Control</code> headers</li>
+                <li><strong>Dev mode proxy</strong> — Next.js dev server on <code>:3000</code> proxies <code>/api/*</code>, <code>/events</code>, <code>/mux</code> to Go on <code>:3001</code></li>
+                <li><strong>Packaged build</strong> — Go binary bundled via <code>extraResources</code>; <code>embed.FS</code> serves frontend; single-port verified</li>
+              </ul>
+              <div class="impl-exit">Packaged Electron app launches daemon, frontend loads from binary, <code>/healthz</code> gate prevents early connection. Dev mode (Next.js HMR + Go API) verified.</div>
+            </div>
+          </div>
+
+        </div><!-- /phase 1 group -->
+
+        <!-- Phase 2 — EventBus + SSE + Frontend -->
+        <div class="impl-phase" id="phase2" style="margin-bottom:10px">
+          <div class="impl-phase-header">
+            <div class="impl-phase-num" style="background:#7c3aed;font-size:11px">2</div>
+            <div>
+              <div class="impl-phase-title">EventBus + SSE + Frontend subscription</div>
+              <div class="impl-phase-goal">Backend emits events over SSE. Frontend subscribes via a Context Provider and stores state in slices.</div>
+            </div>
+          </div>
+          <div class="impl-phase-body">
+            <div class="mw-label" style="margin-top:0">Backend — Go</div>
+            <ul class="impl-tasks">
+              <li>Define Go event structs derived from what lifecycle manager actually emits</li>
+              <li><code>EventBus</code> interface: <code>Publish(topic, payload)</code> + <code>Subscribe(topics) (&lt;-chan Event, unsubscribe func())</code></li>
+              <li>In-process implementation — goroutine fan-out, ring buffer ~1000 events, monotonic <code>id:</code> counter</li>
+              <li>SSE handler <code>GET /api/v1/events?topics=sessions,prs,ci</code> — reads bus, writes <code>event:</code> / <code>id:</code> / <code>data:</code> frames, heartbeat <code>: ping</code> every 15s</li>
+              <li>Per-resource scoped stream <code>GET /api/v1/sessions/:id/events</code> for detail pages</li>
+              <li>Wire lifecycle manager + SCM poller → <code>EventBus.Publish()</code></li>
+            </ul>
+            <div class="mw-label">Frontend — TypeScript / React</div>
+            <ul class="impl-tasks">
+              <li><strong>EventSourceContext</strong> — a React Context Provider mounted at app root. Opens one <code>EventSource</code> to <code>/api/v1/events?topics=sessions,prs,ci</code>. Manages connect / reconnect lifecycle (closes on unmount, re-opens on focus after backgrounding).</li>
+              <li><strong>Event dispatch</strong> — provider listens to named events (<code>addEventListener('session.updated', …)</code>). On each event, calls the relevant Zustand/reducer action to update the matching store slice — no global re-renders.</li>
+              <li><strong>Store slices</strong> — <code>useSessionStore</code>, <code>usePRStore</code>, <code>useCIStore</code>. Each slice has a <code>patch(event)</code> action that merges the SSE payload. Slices are initialised by REST (page load) and kept live by SSE.</li>
+              <li><strong>Consumer hooks</strong> — <code>useSessionEvents(id)</code>, <code>usePREvents(id)</code> subscribe to the scoped per-resource stream when a detail page mounts. Unsubscribe on unmount.</li>
+              <li><strong>Connection status</strong> — context exposes <code>status: 'connecting' | 'open' | 'closed'</code> so components can show a stale-data indicator when SSE is offline.</li>
+            </ul>
+            <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;font-family:'SF Mono','Fira Code',monospace;font-size:12px;line-height:1.8;margin-top:12px;color:var(--slate)">
+              <span style="color:#6b7280">// Provider (app root)</span><br>
+              &lt;EventSourceProvider topics={['sessions','prs','ci']}&gt;<br>
+              &nbsp;&nbsp;&lt;App /&gt;<br>
+              &lt;/EventSourceProvider&gt;<br><br>
+              <span style="color:#6b7280">// Consumer (any component)</span><br>
+              <span style="color:#059669">const</span> sessions = <span style="color:#2563eb">useSessionStore</span>(s =&gt; s.sessions)<br>
+              <span style="color:#059669">const</span> status &nbsp;= <span style="color:#2563eb">useEventSource</span>().status &nbsp;<span style="color:#6b7280">// 'open' | 'connecting' | 'closed'</span>
+            </div>
+            <div class="impl-exit">Open <code>/api/v1/events?topics=sessions</code> in the browser, spawn a session via REST, see <code>event: session.updated</code> arrive. In the app, the sessions list updates without a page reload.</div>
+            <div class="impl-blocked">Event taxonomy (which events each topic emits, exact payload shapes) must be agreed before wiring frontend dispatch.</div>
+          </div>
+        </div>
+
+        <!-- Phase 3 — Core routes -->
+        <div class="impl-phase" id="phase3" style="margin-bottom:10px">
+          <div class="impl-phase-header">
+            <div class="impl-phase-num" style="background:#059669;font-size:11px">3</div>
+            <div>
+              <div class="impl-phase-title">Core routes</div>
+              <div class="impl-phase-goal">Routes the frontend actually uses work end-to-end. Highest-traffic first.</div>
+            </div>
+          </div>
+          <div class="impl-phase-body">
+            <ul class="impl-tasks">
+              <li><strong>Sessions</strong> — <code>GET /sessions</code> (with <code>?project</code>, <code>?active</code>, <code>?orchestratorOnly</code>, <code>?fresh</code>), detail, spawn, kill, message, send, restore</li>
+              <li><strong>Projects</strong> — list, detail, reload</li>
+              <li><strong>Issues, backlog, PRs</strong> — <code>GET /issues</code>, <code>GET /backlog</code>, <code>POST /prs/:id/merge</code></li>
+              <li><strong>Meta</strong> — <code>GET /version</code>, <code>POST /update</code>, <code>POST /webhooks/*</code></li>
+              <li>Unclear routes stay explicit no-ops — <code>/remap</code>, <code>/patches</code>, <code>/orchestrators</code>, <code>/observability</code>, <code>/verify</code>, <code>/setup-labels</code></li>
+            </ul>
+            <div class="impl-exit">Kanban loads, sessions list renders, spawn + kill work. Full frontend feature-parity with current TS on the happy path.</div>
+          </div>
+        </div>
+
+        <!-- Phase 4 — WebSocket /mux -->
+        <div class="impl-phase" id="phase4" style="margin-bottom:10px">
+          <div class="impl-phase-header">
+            <div class="impl-phase-num phase-color-5" style="font-size:11px">4</div>
+            <div>
+              <div class="impl-phase-title">WebSocket <code>/mux</code></div>
+              <div class="impl-phase-goal">Bidirectional terminal streaming between frontend and agent sessions.</div>
+            </div>
+          </div>
+          <div class="impl-phase-body">
+            <ul class="impl-tasks">
+              <li>One WS connection per terminal session using <code>coder/websocket</code></li>
+              <li>PTY framing — raw bytes upstream (keystrokes), raw bytes downstream (output)</li>
+              <li>Reconnect handling — client reconnects with session ID, server resumes stream</li>
+              <li>Lifecycle tie-in — clean WS close when underlying session terminates</li>
+              <li>Backpressure — slow client doesn't block other sessions</li>
+            </ul>
+            <div class="impl-exit">Terminal in Electron connects to <code>/mux?session=:id</code>, keystrokes reach the agent, output streams back in real time.</div>
+            <div class="impl-blocked">WebSocket design not yet complete — start that discussion before implementing.</div>
+          </div>
+        </div>
+
+        <!-- Excluded -->
+        <div style="margin-top:16px">
+          <div class="mw-label" style="margin-bottom:8px">Excluded — design not yet complete</div>
+          <div class="impl-excluded">
+            <div class="impl-excl-row"><div>Item</div><div>Reason</div></div>
+            <div class="impl-excl-row"><div>Error envelope</div><div class="route-notes">Design open (Q1.3)</div></div>
+            <div class="impl-excl-row"><div>OpenAPI spec</div><div class="route-notes">Design open (Q1.5)</div></div>
+            <div class="impl-excl-row"><div>Filesystem routes</div><div class="route-notes">TODO — design not started (Q1.11)</div></div>
+            <div class="impl-excl-row"><div>Auth token</div><div class="route-notes">Deferred</div></div>
+            <div class="impl-excl-row"><div>SSE frontend subscription</div><div class="route-notes">In progress — needed before Phase 2</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Open items -->
+      <section id="open">
+        <div class="section-title">Still open</div>
+        <details>
+          <summary>
+            <span>6 open items &amp; TODOs</span>
+            <span style="display:flex;gap:6px;align-items:center">
+              <span style="font-size:11px;font-weight:600;background:var(--amber-light);color:var(--amber);padding:2px 8px;border-radius:20px">4 open</span>
+              <span style="font-size:11px;font-weight:600;background:var(--red-light);color:var(--red);padding:2px 8px;border-radius:20px">2 todo</span>
+            </span>
+          </summary>
+          <div class="details-body">
+            <div class="open-grid">
+              <div class="open-card"><div class="open-card-icon icon-open">🔧</div><div class="open-card-body"><h4>Error envelope + versioning</h4><p>One wire shape for every error. Whether <code>/api/v1</code> is the right versioning strategy.</p></div></div>
+              <div class="open-card"><div class="open-card-icon icon-open">📄</div><div class="open-card-body"><h4>OpenAPI strategy</h4><p>Hand-written vs. code-first vs. spec-first codegen. Affects contributor workflow.</p></div></div>
+              <div class="open-card"><div class="open-card-icon icon-open">🔔</div><div class="open-card-body"><h4>SSE frontend subscription</h4><p>How the Context Provider manages the <code>EventSource</code> and dispatches into store slices.</p></div></div>
+              <div class="open-card"><div class="open-card-icon icon-open">🔄</div><div class="open-card-body"><h4>Event ID scheme</h4><p>Monotonic per-process counter resets on daemon restart. Acceptable, or persist across restarts?</p></div></div>
+              <div class="open-card"><div class="open-card-icon icon-todo">🗂️</div><div class="open-card-body"><h4>Filesystem routes — TODO</h4><p>How to expose the native machine filesystem. Both current routes are no-ops until designed.</p></div></div>
+              <div class="open-card"><div class="open-card-icon icon-todo">🔌</div><div class="open-card-body"><h4>WebSocket /mux design</h4><p>Mux semantics, PTY framing, reconnect, backpressure. Full design needed before Phase 4.</p></div></div>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <!-- Non-goals -->
+      <section id="nongoals">
+        <div class="section-title">Explicitly not in scope</div>
+        <div class="nongoals">
+          <ul>
+            <li>Multi-tenant cloud deployment</li>
+            <li>Horizontal scaling of WS independently of REST</li>
+            <li>CDN distribution of the frontend bundle</li>
+            <li>Anonymous + authenticated dual auth surfaces</li>
+            <li>WAF or per-surface rate limiting</li>
+            <li>Auth token (deferred)</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Decision log -->
+      <section id="decisionlog">
+        <div class="section-title">Decision log</div>
+        <div class="log-table-wrap">
+          <div class="log-header"><div>#</div><div>Decision</div><div>Rationale</div></div>
+          <div class="log-row" style="background:var(--amber-light)"><div class="log-num">1</div><div class="log-decision">SSE as transport for state-push <span style="font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:20px;background:var(--amber-light);color:var(--amber);border:1px solid #fde68a">in progress</span></div><div class="log-rationale">Transport direction agreed. Subscription model + frontend integration still being designed.</div></div>
+          <div class="log-row" style="background:var(--amber-light)"><div class="log-num">2</div><div class="log-decision">URL topic filter + per-resource scoped streams <span style="font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:20px;background:var(--amber-light);color:var(--amber);border:1px solid #fde68a">in progress</span></div><div class="log-rationale">Leaning this direction. Not yet confirmed.</div></div>
+          <div class="log-row" style="background:var(--amber-light)"><div class="log-num">3</div><div class="log-decision">SSE envelope: event / id / data <span style="font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:20px;background:var(--amber-light);color:var(--amber);border:1px solid #fde68a">in progress</span></div><div class="log-rationale">Proposed shape. Event taxonomy not yet finalised.</div></div>
+          <div class="log-row"><div class="log-num">4</div><div class="log-decision">Single port <code>localhost:3001</code> for v1</div><div class="log-rationale">Local daemon, single user, same-origin, one token, one lifecycle. Dev and prod are the same.</div></div>
+          <div class="log-row"><div class="log-num">5</div><div class="log-decision">Six structural disciplines for cheap future port split</div><div class="log-rationale">Mountable subrouters, no cross-surface state, stateless REST, etc. Keeps the door open without paying now.</div></div>
+          <div class="log-row"><div class="log-num">6</div><div class="log-decision">chi as HTTP framework</div><div class="log-rationale">http.Handler-compatible, subrouters, standard middleware. WS upgrade trivial.</div></div>
+          <div class="log-row"><div class="log-num">7</div><div class="log-decision">25 routes at path parity with TS under <code>/api/v1</code></div><div class="log-rationale">Rewrite, not reimagine — lock surface first. No pagination. Query-param filtering unchanged.</div></div>
+          <div class="log-row"><div class="log-num">8</div><div class="log-decision">Fail fast on port conflict; 10s shutdown; SSE just closed</div><div class="log-rationale">Matches current TS behaviour. Stale running.json handled by PID check on startup.</div></div>
+          <div class="log-row"><div class="log-num">9</div><div class="log-decision">5-middleware stack; timeout on <code>/api/v1</code> only; no CORS / auth / rate limit</div><div class="log-rationale">Same port in dev and prod → CORS unnecessary. Auth and rate limit deferred.</div></div>
+        </div>
+      </section>
+
+    </div><!-- /content -->
+  </div><!-- /layout -->
+
+  <div class="footer">AO Backend Rewrite · Design &amp; Implementation Plan · WIP — decisions accumulate as discussion progresses</div>
+
+</div>
+
+<script>
+  // Scroll spy — highlight active nav link
+  const links = document.querySelectorAll('.nav-link');
+  const sections = document.querySelectorAll('.content section[id], .impl-phase[id]');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const active = document.querySelector(`.nav-link[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-10% 0px -60% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

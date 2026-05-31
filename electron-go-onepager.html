@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Migrating from Next.js to Electron + Go — One Pager</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --border: #30363d;
+        --text: #e6edf3;
+        --muted: #9da7b3;
+        --accent: #58a6ff;
+        --accent-soft: #1f6feb33;
+        --code-bg: #1a1f27;
+        --good: #3fb950;
+        --warn: #d29922;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      main {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 48px 24px 80px;
+      }
+      header {
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 24px;
+        margin-bottom: 32px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        letter-spacing: -0.01em;
+      }
+      .lede {
+        color: var(--muted);
+        margin: 0;
+        font-size: 15px;
+      }
+      .stack-pill {
+        display: inline-block;
+        padding: 2px 10px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        font-size: 12px;
+        color: var(--muted);
+        margin-right: 6px;
+      }
+      .stack-pill.new { color: var(--accent); border-color: var(--accent-soft); }
+      h2 {
+        font-size: 20px;
+        margin: 40px 0 12px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 {
+        font-size: 15px;
+        margin: 20px 0 6px;
+        color: var(--accent);
+      }
+      p { margin: 8px 0; }
+      ul { margin: 6px 0 12px; padding-left: 22px; }
+      li { margin: 4px 0; }
+      code {
+        background: var(--code-bg);
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        color: #d2a8ff;
+      }
+      pre {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12.5px;
+        line-height: 1.5;
+        color: var(--text);
+      }
+      pre code { background: none; padding: 0; color: inherit; }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0 20px;
+        font-size: 14px;
+      }
+      th, td {
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        vertical-align: top;
+        text-align: left;
+      }
+      th {
+        background: var(--panel);
+        font-weight: 600;
+        color: var(--text);
+      }
+      td.label { color: var(--accent); font-weight: 600; white-space: nowrap; }
+      .callout {
+        background: var(--panel);
+        border-left: 3px solid var(--accent);
+        padding: 12px 16px;
+        margin: 16px 0;
+        border-radius: 0 6px 6px 0;
+      }
+      .callout strong { color: var(--accent); }
+      .diagram {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 18px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12.5px;
+        line-height: 1.5;
+        white-space: pre;
+        overflow-x: auto;
+        color: var(--text);
+      }
+      footer {
+        margin-top: 56px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Next.js &rarr; Electron + Go: Migration One-Pager</h1>
+        <p class="lede">
+          A backend-engineer-friendly explainer of what changes when we move the
+          frontend off the browser and into a desktop shell, with a Go service
+          replacing the Node backend.
+        </p>
+        <p style="margin-top: 14px">
+          <span class="stack-pill">Today: Next.js (App Router) + Node</span>
+          <span class="stack-pill new">Tomorrow: Electron + Go</span>
+        </p>
+      </header>
+
+      <section>
+        <h2>1. What is Electron &mdash; and why will it help?</h2>
+        <p>
+          <strong>Electron is a runtime that packages a web app as a native
+          desktop app.</strong> It is Chromium (the browser engine) plus
+          Node.js, bundled into a single installable binary. Users double-click
+          an icon; under the hood they get our React UI rendered in a Chromium
+          window.
+        </p>
+
+        <h3>The two-process model</h3>
+        <ul>
+          <li>
+            <strong>Main process</strong> &mdash; a Node.js process. Boots the
+            app, creates windows, owns OS-level capabilities (filesystem, child
+            processes, native menus, tray, auto-update). One per app.
+          </li>
+          <li>
+            <strong>Renderer process</strong> &mdash; a Chromium window. Runs
+            our React tree exactly like it does in the browser today. Sandboxed:
+            no direct OS access. One per window.
+          </li>
+          <li>
+            <strong>IPC bridge</strong> &mdash; the only sanctioned way the two
+            communicate. The main process exposes a typed surface to the
+            renderer via a <code>preload.ts</code> script.
+          </li>
+        </ul>
+
+        <h3>Why it helps</h3>
+        <ul>
+          <li>
+            <strong>Distribution.</strong> Ship a signed installer instead of
+            requiring users to run a CLI / dev server.
+          </li>
+          <li>
+            <strong>OS integration.</strong> Native menus, system tray,
+            notifications, deep links, file picker, auto-update &mdash; things
+            browsers refuse to grant.
+          </li>
+          <li>
+            <strong>Local-first.</strong> We can spawn and supervise local
+            processes (agents, tmux sessions, the Go service itself) without a
+            running server.
+          </li>
+          <li>
+            <strong>Single trust boundary.</strong> Everything runs on the
+            user's machine. No CORS, no auth tokens to ship, no public URL.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>2. What is Go &mdash; and why will it help?</h2>
+        <p>
+          <strong>Go is a statically typed, compiled language with first-class
+          concurrency.</strong> It produces a single static binary per platform,
+          no runtime to install. It is the workhorse language for CLIs, daemons,
+          and infra services for exactly the reasons we'd want it here.
+        </p>
+
+        <h3>Why it helps for this product</h3>
+        <ul>
+          <li>
+            <strong>Process supervision is the core workload.</strong> Spawning
+            agents, killing trees, watching tmux/PTY processes &mdash; this is
+            what Go's <code>os/exec</code> and goroutine model are good at.
+          </li>
+          <li>
+            <strong>Concurrency.</strong> A goroutine per session is cheap. The
+            current TypeScript backend juggles polling loops; Go expresses the
+            same logic in <em>far</em> less code with channels.
+          </li>
+          <li>
+            <strong>One binary, three OSes.</strong> Cross-compile to macOS /
+            Linux / Windows. No Node version skew, no <code>node_modules</code>,
+            no native-module rebuilds.
+          </li>
+          <li>
+            <strong>Static types &amp; tooling.</strong> Stronger guarantees
+            than TypeScript at runtime (no <code>any</code> escape hatch), with
+            a fast compiler and excellent stdlib for HTTP / JSON / fs.
+          </li>
+          <li>
+            <strong>Resource footprint.</strong> Lower memory and startup time
+            than a long-running Node process &mdash; matters because it runs on
+            the user's laptop alongside Electron.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>3. How Electron and Go fit together</h2>
+        <p>
+          The Go service runs as a <strong>sidecar child process</strong>
+          launched and supervised by the Electron main process. The renderer
+          never talks to Go directly; it talks to main via IPC, which forwards
+          calls to Go over <strong>HTTP + WebSocket bound to
+          <code>127.0.0.1</code></strong> (no gRPC).
+        </p>
+
+        <div class="diagram">┌─────────────────────── Electron App (one installable binary) ────────────────────────┐
+│                                                                                      │
+│   ┌──────────────────────────────────┐         ┌──────────────────────────────────┐  │
+│   │  Renderer process                │         │  Main process                    │  │
+│   │  (Chromium window, sandboxed)    │         │  (Node.js, privileged)           │  │
+│   │                                  │   IPC   │                                  │  │
+│   │   • React / Next.js UI           │ ◄─────► │   • App + window lifecycle       │  │
+│   │   • Calls window.ao.* only       │         │   • IPC handlers                 │  │
+│   │   • No FS / process / net access │         │   • Spawns &amp; supervises Go      │  │
+│   │                                  │         │   • Forwards calls to Go         │  │
+│   │   ┌─────── preload.ts ────────┐  │         │                                  │  │
+│   │   │ exposes window.ao via     │  │         │                                  │  │
+│   │   │ contextBridge (whitelist) │  │         │                                  │  │
+│   │   └───────────────────────────┘  │         │                                  │  │
+│   └──────────────────────────────────┘         └────────────────┬─────────────────┘  │
+│                                                                 │ spawn / kill       │
+└─────────────────────────────────────────────────────────────────┼────────────────────┘
+                                                                  │
+                                                                  │ HTTP + WebSocket
+                                                                  │ on 127.0.0.1:&lt;port&gt;
+                                                                  ▼
+                                                ┌──────────────────────────────────┐
+                                                │  Go sidecar (separate process)   │
+                                                │                                  │
+                                                │   • Business logic               │
+                                                │   • Process / tmux supervision   │
+                                                │   • Worktree &amp; session mgmt      │
+                                                │   • Binds 127.0.0.1:0 (ephem.)   │
+                                                └──────────────────────────────────┘
+        </div>
+
+        <h3>What lives where</h3>
+        <table>
+          <thead>
+            <tr><th>Component</th><th>Process</th><th>Responsibility</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Renderer</strong></td>
+              <td>Chromium window (sandboxed)</td>
+              <td>React tree, UI state. Calls <code>window.ao.*</code>. No OS access.</td>
+            </tr>
+            <tr>
+              <td><strong>preload.ts</strong></td>
+              <td>Runs inside renderer, before page JS</td>
+              <td>The whitelist. Defines exactly which calls the UI is allowed to make.</td>
+            </tr>
+            <tr>
+              <td><strong>Main process</strong></td>
+              <td>Node.js (privileged)</td>
+              <td>App lifecycle, windows, IPC handlers. Spawns &amp; supervises Go. Forwards IPC calls into HTTP/WS calls to Go.</td>
+            </tr>
+            <tr>
+              <td><strong>Go sidecar</strong></td>
+              <td>Separate OS process</td>
+              <td>All business logic. Bound to <code>127.0.0.1:&lt;ephemeral port&gt;</code>. Same Go service code as a future remote deployment.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Why sidecar (vs. alternatives we considered)</h3>
+        <table>
+          <thead>
+            <tr><th>Pattern</th><th>Verdict</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Sidecar process</strong> (chosen)</td>
+              <td>Clean boundary, easy to test, portable to remote later.</td>
+            </tr>
+            <tr>
+              <td>Embed backend in main process (Node rewrite)</td>
+              <td>Throws away Go's value; couples UI &amp; backend crash domains.</td>
+            </tr>
+            <tr>
+              <td>Native bindings (CGO / N-API)</td>
+              <td>Hard packaging, hard debugging, async Go doesn't translate cleanly.</td>
+            </tr>
+            <tr>
+              <td>Go &rarr; WASM in renderer</td>
+              <td>Can't spawn processes or access FS &mdash; non-starter for our workload.</td>
+            </tr>
+            <tr>
+              <td>Pure-Go desktop (Wails / Tauri)</td>
+              <td>Viable but different framework; tracked separately, not part of this migration.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Concerns &amp; guardrails for spawning Go from Node</h3>
+        <table>
+          <thead>
+            <tr><th>Risk</th><th>Guardrail</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Orphan Go process if Electron crashes</td>
+              <td>PID file on spawn; kill stale process on next launch before binding. (Already the pattern in <code>running.json</code>.)</td>
+            </tr>
+            <tr>
+              <td>Port collisions / hardcoded ports</td>
+              <td>Go binds <code>:0</code> (ephemeral), prints chosen port on stdout; main reads it before letting renderer connect.</td>
+            </tr>
+            <tr>
+              <td>Renderer calls Go before it's ready</td>
+              <td>Main queues IPC calls until a health-check passes; main exposes a <code>status</code> field the UI can read.</td>
+            </tr>
+            <tr>
+              <td>Stdout/stderr backpressure deadlocks Go</td>
+              <td>Always consume both streams in main &mdash; pipe into the logger.</td>
+            </tr>
+            <tr>
+              <td>Cross-platform process teardown (Windows &ne; POSIX)</td>
+              <td>Use existing <code>killProcessTree()</code> from <code>@aoagents/ao-core</code>.</td>
+            </tr>
+            <tr>
+              <td>Packaging / code signing</td>
+              <td>Bundle Go binary per OS/arch via <code>extraResources</code>; sign the embedded binary as part of macOS notarization.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          <strong>Designing today so a future remote-Go is a config change, not a rewrite:</strong>
+          <ul>
+            <li>
+              <strong>Renderer never knows where Go runs</strong> &mdash; only
+              main does. Keep <code>window.ao.*</code> location-agnostic.
+            </li>
+            <li>
+              <strong>Go endpoint is a config value</strong> (e.g.
+              <code>AO_BACKEND_URL</code>), not a constant. Local mode auto-picks
+              an ephemeral port; remote mode reads a URL.
+            </li>
+            <li>
+              <strong>HTTP + WebSocket, not stdio.</strong> Stdio works only
+              locally. HTTP/WS crosses machines unchanged.
+            </li>
+            <li>
+              <strong>Decide early: when Go moves remote, where do worktrees
+              live?</strong> If they must stay on the user's machine, Go can't
+              be fully remote without a sync story. Don't bake
+              shared-filesystem assumptions into the API.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <footer>
+        Owner: backend &middot; Status: draft for team review &middot; Next
+        step: agree on Go transport (HTTP + WS over localhost) and IPC channel
+        naming convention.
+      </footer>
+    </main>
+  </body>
+</html>
