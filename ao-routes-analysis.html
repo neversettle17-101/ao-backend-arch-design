@@ -590,12 +590,8 @@
           <table>
             <thead><tr><th>Method</th><th>Legacy path</th><th>New (v1)</th><th>Purpose</th><th>Verdict</th><th>Note</th></tr></thead>
             <tbody>
-              <tr><td><span class="method method-get">GET</span> <span class="method method-post">POST</span></td><td class="route-path"><a href="https://github.com/ComposioHQ/agent-orchestrator/blob/main/packages/web/src/app/api/issues/route.ts" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">/api/issues</a></td><td class="route-path" style="color:#9ca3af">— SCM lane</td><td class="route-notes">List / create issues across trackers</td><td><span class="badge-p2">different lane</span></td><td class="route-notes">SCM poller's concern</td></tr>
-              <tr><td><span class="method method-get">GET</span></td><td class="route-path"><a href="https://github.com/ComposioHQ/agent-orchestrator/blob/main/packages/web/src/app/api/backlog/route.ts" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">/api/backlog</a></td><td class="route-path" style="color:#9ca3af">— SCM lane</td><td class="route-notes">List backlog + start poller on first call</td><td><span style="background:#f1f5f9;color:#475569;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:4px">reshape</span></td><td class="route-notes">"Start a poller on GET" is an anti-pattern — the poller is a daemon goroutine</td></tr>
-              <tr><td><span class="method method-post">POST</span></td><td class="route-path"><a href="https://github.com/ComposioHQ/agent-orchestrator/blob/main/packages/web/src/app/api/setup-labels/route.ts" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">/api/setup-labels</a></td><td class="route-path" style="color:#9ca3af">— CLI</td><td class="route-notes">Create agent labels on repos</td><td><span class="badge-todo2">defer</span></td><td class="route-notes">One-time setup; could stay CLI-only</td></tr>
-              <tr><td><span class="method method-get">GET</span> <span class="method method-post">POST</span></td><td class="route-path"><a href="https://github.com/ComposioHQ/agent-orchestrator/blob/main/packages/web/src/app/api/verify/route.ts" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">/api/verify</a></td><td class="route-path" style="color:#9ca3af">— SCM lane</td><td class="route-notes">merged-unverified workflow</td><td><span class="badge-p2">different lane</span></td><td></td></tr>
               <tr><td><span class="method method-post">POST</span></td><td class="route-path"><a href="https://github.com/ComposioHQ/agent-orchestrator/blob/main/packages/web/src/app/api/prs/%5Bid%5D/merge/route.ts" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">/api/prs/:id/merge</a></td><td class="route-path" style="color:#9ca3af">— SCM lane</td><td class="route-notes">Merge a PR</td><td><span class="badge-p2">different lane</span></td><td class="route-notes">SCM action</td></tr>
-              <tr><td><span class="method method-post">POST</span></td><td class="route-path"><a href="https://github.com/ComposioHQ/agent-orchestrator/blob/main/packages/web/src/app/api/webhooks/%5B...slug%5D/route.ts" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">/api/webhooks/*</a></td><td class="route-path" style="color:#9ca3af">— ingress</td><td class="route-notes">SCM webhook ingress</td><td><span class="badge-p2">different lane</span></td><td class="route-notes">Feeds <code>ApplySCMObservation</code>, not a session route</td></tr>
+              <tr><td><span class="method method-post">POST</span></td><td class="route-path"><a href="https://github.com/ComposioHQ/agent-orchestrator/blob/main/packages/web/src/app/api/prs/%5Bid%5D/resolve-comments/route.ts" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">/api/prs/:id/resolve-comments</a></td><td class="route-path" style="color:#9ca3af">— SCM lane</td><td class="route-notes">Resolve review comments on a PR</td><td><span class="badge-p2">different lane</span></td><td class="route-notes">SCM action</td></tr>
             </tbody>
           </table>
         </div>
@@ -604,40 +600,6 @@
         <details style="margin-top:24px">
           <summary>SCM — API contract <span style="color:var(--text-secondary);font-weight:400">(request / response shapes — for the SCM lane to own)</span></summary>
         <div class="decisions-grid" style="grid-template-columns:1fr;margin-top:14px">
-
-          <div class="decision-card">
-            <div class="decision-card-header"><h3><span class="method method-get">GET</span> &nbsp;/api/issues</h3><span class="badge badge-open">SCM lane</span></div>
-            <div class="sse-code" style="white-space:pre-wrap;line-height:1.7">→ req   ?state= &?label= &?project=
-← 200   { issues: [ … ] }</div>
-          </div>
-
-          <div class="decision-card">
-            <div class="decision-card-header"><h3><span class="method method-post">POST</span> &nbsp;/api/issues</h3><span class="badge badge-open">SCM lane</span></div>
-            <div class="sse-code" style="white-space:pre-wrap;line-height:1.7">→ req   { title: string (required, ≤ 200), projectId: string (required), description?, addToBacklog?: boolean }
-← 201   { issue }
-← 400   { error }</div>
-          </div>
-
-          <div class="decision-card">
-            <div class="decision-card-header"><h3><span class="method method-get">GET</span> &nbsp;/api/backlog</h3><span class="badge badge-open">reshape</span></div>
-            <div class="sse-code" style="white-space:pre-wrap;line-height:1.7">→ req   (none)
-← 200   { issues: [ … ] }
-// the poller must be a daemon goroutine, not started lazily on GET</div>
-          </div>
-
-          <div class="decision-card">
-            <div class="decision-card-header"><h3><span class="method method-post">POST</span> &nbsp;/api/setup-labels</h3><span class="badge badge-open">defer</span></div>
-            <div class="sse-code" style="white-space:pre-wrap;line-height:1.7">→ req   (none)
-← 200   { results }</div>
-          </div>
-
-          <div class="decision-card">
-            <div class="decision-card-header"><h3><span class="method method-get">GET</span> <span class="method method-post">POST</span> &nbsp;/api/verify</h3><span class="badge badge-open">SCM lane</span></div>
-            <div class="sse-code" style="white-space:pre-wrap;line-height:1.7">GET  → req   (none)
-     ← 200   { issues: [ …merged-unverified… ] }
-POST → req   { issueId, projectId, action: "verify" | "fail", comment? }
-     ← 200   { ok: true }</div>
-          </div>
 
           <div class="decision-card">
             <div class="decision-card-header"><h3><span class="method method-post">POST</span> &nbsp;/api/prs/:id/merge</h3><span class="badge badge-open">SCM lane</span></div>
@@ -649,12 +611,11 @@ POST → req   { issueId, projectId, action: "verify" | "fail", comment? }
           </div>
 
           <div class="decision-card">
-            <div class="decision-card-header"><h3><span class="method method-post">POST</span> &nbsp;/api/webhooks/*</h3><span class="badge badge-open">ingress</span></div>
-            <div class="sse-code" style="white-space:pre-wrap;line-height:1.7">→ req   (provider webhook payload)
-← 202   { … }        // accepted → feeds ApplySCMObservation
-← 404   { error }    // unknown route
-← 413   { error }    // payload too large
-← 500   { error }</div>
+            <div class="decision-card-header"><h3><span class="method method-post">POST</span> &nbsp;/api/prs/:id/resolve-comments</h3><span class="badge badge-open">SCM lane</span></div>
+            <div class="sse-code" style="white-space:pre-wrap;line-height:1.7">→ req   { commentIds?: string[] }   // omit to resolve all
+← 200   { ok: true, resolved: number }
+← 404   { error }   // unknown PR
+← 422   { error }   // nothing to resolve</div>
           </div>
 
         </div>
